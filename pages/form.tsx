@@ -1,26 +1,7 @@
 import { useEffect, useState } from "react";
 import "../styles/globals.css";
-
-type SelectedFunctions = {
-  [functionName: string]: boolean;
-};
-
-type FunctionInput = {
-  name: string;
-  type: string;
-  indexed: boolean;
-};
-
-type Function = {
-  name: string;
-  constant: boolean;
-  inputs: FunctionInput[];
-  outputs: FunctionInput[];
-  stateMutability: string;
-  type: string;
-  gas: number;
-};
-
+import EditFunction from "../components/EditFunction";
+import FooterNavbar from "../components/FooterNavbar";
 const wizardSteps = [
   {
     id: "ABI",
@@ -38,9 +19,7 @@ const FormPage: React.FC = () => {
   const [abi, setABI] = useState<string | boolean>(false);
   const [step, setStep] = useState<number>(0);
 
-  const [selectedFunctions, setSelectedFunctions] = useState<SelectedFunctions>(
-    {}
-  );
+  const [selectedFunctions, setSelectedFunctions] = useState<[Function]>({});
   const [functions, setFunctions] = useState<[Function] | false>(false);
 
   useEffect(() => {}, [abi, functions]);
@@ -73,7 +52,6 @@ const FormPage: React.FC = () => {
     // Validate the ABI value
     try {
       JSON.parse(abiValue);
-      console.log("ABI is valid JSON.");
       setError(null);
       setABI(abiValue);
       //travel through the abi and find the functions
@@ -81,9 +59,6 @@ const FormPage: React.FC = () => {
 
       const functions = abiArray.filter((item) => item.constant === false);
       const constants = abiArray.filter((item) => item.constant === true);
-
-      console.log("Functions:", functions);
-      console.log("Constants:", constants);
       setFunctions(functions);
       moveStep(true);
     } catch (error) {
@@ -92,11 +67,26 @@ const FormPage: React.FC = () => {
       setFunctions(false);
     }
   };
-  const toggleFunctionSelection = (functionName: string) => {
-    setSelectedFunctions((prevSelectedFunctions) => ({
-      ...prevSelectedFunctions,
-      [functionName]: !prevSelectedFunctions[functionName],
-    }));
+  // const toggleFunctionSelection = (functionName: string) => {
+  const toggleFunctionSelection = (
+    functionName: string | undefined,
+    isChecked: boolean
+  ) => {
+    if (functionName !== undefined) {
+      const selFunction = getFunctionByName(functionName);
+      if (isChecked) {
+        setSelectedFunctions((prevSelectedFunctions) => ({
+          ...prevSelectedFunctions,
+          [functionName]: selFunction,
+        }));
+      } else {
+        setSelectedFunctions((prevSelectedFunctions) => {
+          const newSelectedFunctions = { ...prevSelectedFunctions };
+          delete newSelectedFunctions[functionName];
+          return newSelectedFunctions;
+        });
+      }
+    }
   };
 
   const selectAllFunctions = (select: boolean) => {
@@ -200,8 +190,11 @@ const FormPage: React.FC = () => {
                               type="checkbox"
                               id={func.name}
                               checked={selectedFunctions[func.name] || false}
-                              onChange={() =>
-                                toggleFunctionSelection(func.name)
+                              onChange={(e) =>
+                                toggleFunctionSelection(
+                                  func.name,
+                                  e.target.checked
+                                )
                               }
                               className="text-blue-600 focus:ring-blue-500 rounded border-gray-300"
                             />
@@ -233,30 +226,16 @@ const FormPage: React.FC = () => {
                     </button>
                   </div>
 
-                  <div className="mt-4 space-x-4">
-                    <button
-                      onClick={() => moveStep(false)}
-                      className="py-2 px-4 bg-red-600 text-white rounded hover:bg-red-700 active:bg-red-800 focus:outline-none focus:border-red-700 focus:ring focus:ring-red-200"
-                    >
-                      Back
-                    </button>
-                    <button
-                      onClick={() => setStep(2)}
-                      className="py-2 px-4 bg-green-600 text-white rounded hover:bg-green-700 active:bg-green-800 focus:outline-none focus:border-green-700 focus:ring focus:ring-green-200"
-                    >
-                      Continue
-                    </button>
-                  </div>
+                  <FooterNavbar
+                    backValue={false}
+                    continueValue={2}
+                    moveStep={moveStep}
+                    setStep={setStep}
+                  />
                 </div>
               );
             }
-
           case 2:
-            console.log(selectedFunctions);
-            console.log("functions", functions);
-            const func = getFunctionByName(Object.keys(selectedFunctions[0]));
-            console.log("func: ", func);
-            // console.log(selectedFunctionsArray);
             return (
               <div className="min-h-screen flex items-center justify-center bg-gray-100 py-12 px-4 sm:px-6 lg:px-8">
                 <div className="max-w-md w-full space-y-8 bg-white p-6 rounded-md shadow-md">
@@ -264,10 +243,21 @@ const FormPage: React.FC = () => {
                     <h1 className="mt-6 text-center text-3xl font-extrabold text-gray-900">
                       Create Widgets
                     </h1>
-                    <p>
-                      Place your ABI here to generate a front end interface in
-                      forms of widgets for the functinos of the ABI
-                    </p>
+                    {Object.entries(selectedFunctions).map(
+                      ([funcName, funcDetails], index) => (
+                        <EditFunction
+                          key={index} // or key={funcName} if funcName is guaranteed to be unique
+                          thisFunction={funcDetails}
+                        />
+                      )
+                    )}
+
+                    <FooterNavbar
+                      backValue={false}
+                      continueValue={2}
+                      moveStep={moveStep}
+                      setStep={setStep}
+                    />
                   </div>
                 </div>
               </div>
