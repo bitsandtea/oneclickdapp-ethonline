@@ -1,0 +1,7 @@
+1) first we store the configuration of each widget
+2) we create a component renderer that renders the component
+
+
+projectID, userID, name, address, chainID, ABI
+
+https://wagmi.sh/

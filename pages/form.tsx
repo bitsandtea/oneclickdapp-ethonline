@@ -2,6 +2,8 @@ import { useEffect, useState } from "react";
 import "../styles/globals.css";
 import EditFunction from "../components/EditFunction";
 import FooterNavbar from "../components/FooterNavbar";
+import ReactDOMServer from "react-dom/server";
+
 const wizardSteps = [
   {
     id: "ABI",
@@ -116,15 +118,48 @@ const FormPage: React.FC = () => {
                 <div className="max-w-md w-full space-y-8 bg-white p-6 rounded-md shadow-md">
                   <div>
                     <h1 className="mt-6 text-center text-3xl font-extrabold text-gray-900">
-                      ABI
+                      Create a Project
                     </h1>
                     <p>
-                      Place your ABI here to generate a front end interface in
-                      forms of widgets for the functinos of the ABI
+                      Place your EVM, smart contract data ABI here to generate a
+                      front end interface in forms of widgets for the functinos
+                      of the smart contract that you customize. Then you can
+                      import these widgets into your website or application.
                     </p>
                   </div>
                   <form onSubmit={newABI} className="mt-8 space-y-6">
                     <div className="rounded-md shadow-sm -space-y-px">
+                      {/* Project Name */}
+                      <div className="mb-4">
+                        <label
+                          htmlFor="projectName"
+                          className="block text-sm font-medium text-gray-700"
+                        >
+                          Project Name:
+                        </label>
+                        <input
+                          type="text"
+                          id="projectName"
+                          required
+                          className="mt-1 p-2 w-full border rounded-md focus:outline-none focus:ring focus:border-blue-300"
+                        />
+                      </div>
+
+                      {/* Contract Address */}
+                      <div className="mb-4">
+                        <label
+                          htmlFor="contractAddress"
+                          className="block text-sm font-medium text-gray-700"
+                        >
+                          Contract Address:
+                        </label>
+                        <input
+                          type="text"
+                          id="contractAddress"
+                          required
+                          className="mt-1 p-2 w-full border rounded-md focus:outline-none focus:ring focus:border-blue-300"
+                        />
+                      </div>
                       <div className="mb-4">
                         <label
                           htmlFor="ABI"
@@ -245,13 +280,16 @@ const FormPage: React.FC = () => {
                     </h1>
                     {Object.entries(selectedFunctions).map(
                       ([funcName, funcDetails], index) => (
-                        console.log("funcDetails", funcDetails, funcName),
-                        (
-                          <EditFunction
-                            key={index}
-                            thisFunction={funcDetails}
-                          />
-                        )
+                        <EditFunction
+                          key={index}
+                          thisFunction={funcDetails}
+                          code={ReactDOMServer.renderToString(
+                            <EditFunction
+                              key={index}
+                              thisFunction={funcDetails}
+                            />
+                          )}
+                        />
                       )
                     )}
 

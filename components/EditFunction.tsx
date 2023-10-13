@@ -1,21 +1,17 @@
 // editFunction.tsx
 
-import React, { Component, useState } from "react";
+import React, { useState } from "react";
 import EthereumAddress from "./inputs/EthereumAddress";
 import AmountInput from "./inputs/Amount";
 import SubmitButton from "./inputs/SubmitButton";
+import GetWidgetButton from "./inputs/GetWidgetButton";
 
 interface EditFunctionProps {
   thisFunction: Function;
+  code?: string;
 }
 
-const EditFunction: React.FC<EditFunctionProps> = ({ thisFunction }) => {
-  const [isVisible, setIsVisible] = useState(true);
-
-  if (!isVisible) {
-    return null;
-  }
-
+const EditFunction: React.FC<EditFunctionProps> = ({ thisFunction, code }) => {
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-100 px-4 sm:p-6 lg:p-8">
       <div className="max-w-xl w-full space-y-8 bg-white p-6 rounded-md shadow-md">
@@ -43,18 +39,8 @@ const EditFunction: React.FC<EditFunctionProps> = ({ thisFunction }) => {
                 }
               })()
             )}
-          {/* return ( */}
-          {/* <React.Fragment key={index}> */}
-          {/* {Component}  */}
           <SubmitButton name={thisFunction.name} />
-          {/* <button
-                //       onClick={() => setIsVisible(false)}
-                //       className="bg-red-500 hover:bg-red-700 text-white font-bold py-2 px-4 rounded transition duration-300 ease-in-out"
-                //     >
-                //       ❌ Ignore Input
-                //     </button> */}
-          {/* </React.Fragment> */}
-          {/* ); */}
+          <GetWidgetButton code={code} />
         </div>
       </div>
     </div>

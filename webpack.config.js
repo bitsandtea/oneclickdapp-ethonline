@@ -7,9 +7,9 @@ module.exports = {
       {
         test: /\.(js|jsx)$/, // Regex to select all JS and JSX files
         exclude: /node_modules/,
-        use: {
-          loader: "babel-loader",
-        },
+        // use: {
+        //   loader: "babel-loader",
+        // },
       },
     ],
   },
