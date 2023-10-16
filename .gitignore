@@ -4,3 +4,5 @@ node_modules
 .vscode
 backups/
 .env*.local
+.tablelandrc.json
+notes.txt
