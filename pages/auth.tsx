@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-
+import { useRouter } from "next/router";
 import { LitAbility, LitActionResource } from "@lit-protocol/auth-helpers";
 import {
   EthWalletProvider,
@@ -16,6 +16,7 @@ import { LitNodeClient } from "@lit-protocol/lit-node-client";
 export default function Auth() {
   const [status, setStatus] = useState("");
   const [response, setResponse] = useState("");
+  const router = useRouter();
 
   async function go() {
     setStatus("Creating a LitAuthClient instance...");
@@ -32,7 +33,7 @@ export default function Auth() {
     // -- 2. Create a LitAuthClient instance
     const litAuthClient = new LitAuthClient({
       litRelayConfig: {
-        relayApiKey: "67e55044-10b1-426f-9247-bb680e5fe0c8_relayer",
+        relayApiKey: process.env.NEXT_PUBLIC_LIT_RELAY_API_KEY,
       },
       litNodeClient: litNodeClient,
     });
@@ -123,7 +124,6 @@ export default function Auth() {
       pkpPubKey: pkp.publicKey,
       controllerSessionSigs: sessionSigs,
     });
-    await pkpWallet.init();
 
     setStatus("Using the PKPEthersWallet instance to sign a message...");
     // -- 9. Use the PKPEthersWallet instance to sign a message
@@ -135,6 +135,7 @@ export default function Auth() {
     <main>
       <div className="flex justify-center mt-10">
         <h1 className="text-5xl font-bold">Welcome!</h1>
+        {router.query.message ? <p>Authentication Failed</p> : null}
         <p>
           Welcome to OneClickDapp, to use the dApp, authenticate with Google use
           the button below:

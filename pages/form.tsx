@@ -1,4 +1,8 @@
 import { useEffect, useState } from "react";
+import { ToastContainer, toast } from "react-toastify";
+import { Database } from "@tableland/sdk";
+
+import { useRouter } from "next/router";
 import "../styles/globals.css";
 import EditFunction from "../components/EditFunction";
 import FooterNavbar from "../components/FooterNavbar";
@@ -11,6 +15,8 @@ import {
 import { ProviderType } from "@lit-protocol/constants";
 import { LitNodeClient } from "@lit-protocol/lit-node-client";
 import { LitAbility, LitActionResource } from "@lit-protocol/auth-helpers";
+import { PKPEthersWallet } from "@lit-protocol/pkp-ethers";
+import initLit from "@/utils/lit";
 
 const wizardSteps = [
   {
@@ -25,6 +31,7 @@ const wizardSteps = [
 ];
 
 const FormPage: React.FC = () => {
+  const router = useRouter();
   const [error, setError] = useState<string | null>(null);
   const [abi, setABI] = useState<string | boolean>(false);
   const [step, setStep] = useState<number>(0);
@@ -32,17 +39,10 @@ const FormPage: React.FC = () => {
   const [selectedFunctions, setSelectedFunctions] = useState<[Function]>({});
   const [functions, setFunctions] = useState<[Function] | false>(false);
   const [response, setResponse] = useState("");
-  const [isSignedIn, setIsSignedIn] = useState(false);
   const [authProvider, setAuthProvider] = useState<any>(null);
-  useEffect(() => {}, [abi, functions]);
-
-  useEffect(() => {
-    initLit();
-  }, []);
-
-  useEffect(() => {
-    checkAuthInit();
-  }, [authProvider]);
+  const [usersPKP, setUsersPKP] = useState<any>(null);
+  const [userSigs, setSessionSigs] = useState<any>(null);
+  const [authMethod, setAuthMethod] = useState<any>(null);
 
   const moveStep = (forward: boolean): void => {
     setStep((prevStep) => {
@@ -62,58 +62,48 @@ const FormPage: React.FC = () => {
     });
   };
 
-  const initLit = async () => {
-    // -- 1. Create a LitAuthClient instance
-    const litNodeClient = new LitNodeClient({
-      litNetwork: "cayenne",
-      debug: true,
-    });
+  useEffect(() => {}, [abi, functions]);
 
-    await litNodeClient.connect();
+  // steps for using LIT auth
+  // 1. Create a LitAuthClient instance
+  useEffect(() => {
+    const fetchAuthProvider = async () => {
+      const authProvider = await initLit();
+      setAuthProvider(authProvider);
+    };
 
-    setStatus("Creating a LitAuthClient instance...");
-    // -- 2. Create a LitAuthClient instance
-    const litAuthClient = new LitAuthClient({
-      litRelayConfig: {
-        relayApiKey: "67e55044-10b1-426f-9247-bb680e5fe0c8_relayer",
-      },
-      litNodeClient: litNodeClient,
-    });
+    fetchAuthProvider();
+  }, []);
 
-    const authProvider = litAuthClient.initProvider<GoogleProvider>(
-      ProviderType.Google,
-      {
-        // redirectUri: `${process.env.NEXT_PUBLIC_BASE_URL}/form`, // window.location.href,
-        redirectUri: window.location.href,
-      }
-    );
-    setAuthProvider(authProvider);
-  };
-
-  const checkAuthInit = async () => {
-    setStatus("Checking if user is already signed in...");
-    // -- 4. Check if user is already signed in
-    const url = new URL(window.location.href);
-    const provider = url.searchParams.get("provider");
-
-    // -- 4a. redirect to sign in if no provider
-    if (!provider) {
-      setStatus("Redirecting to sign in...");
-      setIsSignedIn(true); // Set flag to prevent further sign-in attempts
-      await authProvider.signIn();
-      return;
+  // 2. Create a LitAuthClient instance
+  useEffect(() => {
+    if (authProvider !== null) {
+      if (authMethod == null) authenticate();
     }
+  }, [authProvider]);
 
-    setStatus("Authenticating...");
-    // -- 4b. authenticate
-    console.log("authProvider", authProvider);
+  useEffect(() => {
+    if (authMethod !== null) fetchPKPs();
+  }, [authMethod]);
+
+  useEffect(() => {
+    if (usersPKP !== null) createWallets();
+  }, [usersPKP]);
+
+  const authenticate = async () => {
+    try {
+      const fetchedAuthMethod = await authProvider.authenticate();
+      setAuthMethod(fetchedAuthMethod);
+    } catch (e) {
+      redirectToAuth();
+      console.log("error: ", e);
+    }
   };
-  const checkAuth = async () => {
-    const authMethod = await authProvider.authenticate();
-
+  const redirectToAuth = () => {
+    router.push("/auth?message=fail");
+  };
+  const fetchPKPs = async () => {
     setResponse(`authMethod: ${JSON.stringify(authMethod)}`);
-
-    setStatus("Fetching user pkps...");
     // -- 5. fetch user pkps, if none, create one, and use it
     let pkps = await authProvider.fetchPKPsThroughRelayer(authMethod);
 
@@ -133,7 +123,7 @@ const FormPage: React.FC = () => {
     }
 
     const pkp = pkps[pkps.length - 1];
-    setResponse(`pkp: ${JSON.stringify(pkp)}`);
+    setUsersPKP(pkp);
 
     setStatus("Getting session sigs...");
     // -- 6. get session sigs
@@ -150,23 +140,91 @@ const FormPage: React.FC = () => {
         ],
       },
     });
+    setSessionSigs(sessionSigs);
     setResponse(`sessionSigs: ${JSON.stringify(sessionSigs)}`);
   };
 
-  const newABI = (event: React.FormEvent) => {
+  const createWallets = async () => {
+    setStatus("Creating PKP Ethers Wallet...");
+    // -- 8. Create a PKPEthersWallet instance //interact with the blockchain.
+    const pkpWallet = new PKPEthersWallet({
+      pkpPubKey: usersPKP.publicKey,
+      controllerSessionSigs: userSigs,
+    });
+    await pkpWallet.init();
+    const address = await pkpWallet.getAddress();
+    setStatus("");
+  };
+
+  const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
+    const ABIValue = (
+      event.currentTarget.elements.namedItem("ABI") as HTMLTextAreaElement
+    ).value;
+    newABI(ABIValue);
+    storeDB(
+      "ABI VAlue here",
+      "address",
+      "chainID",
+      "name",
+      "projectID",
+      "userID"
+    );
+  };
+
+  const storeDB = async (
+    ABI: string,
+    address: string,
+    chainID: string,
+    name: string,
+    projectID: string,
+    userID: string
+  ) => {
+    // Insert a row into the table
+    interface Schema {
+      ABI: string;
+      chainID: string;
+      name: string;
+      projectID: string;
+      userID: string;
+    }
+
+    // Default to grabbing a wallet connection in a browser
+    const db = new Database<Schema>();
+
+    const allColumns = "ABI, address, chainID, name, projectID, userID";
+    const values = [ABI, address, chainID, name, projectID, userID];
+    const dbName = "project_11155111_97";
+    const { meta: insert } = await db
+      .prepare(
+        `INSERT INTO ${dbName} (${allColumns}) VALUES (?, ?, ?, ?, ?, ?);`
+      )
+      .bind(values)
+      .run();
+
+    // Wait for transaction finality
+    console.log("insert", insert);
+    const txRes = await insert.txn?.wait();
+    console.log("txRes", txRes);
+
+    // Perform a read query, requesting all rows from the table
+    const { results } = await db.prepare(`SELECT * FROM ${dbName};`).all();
+    console.log("results", results);
+  };
+  // const newABI = (event: React.FormEvent) => {
+  const newABI = (ABIValue: string) => {
     // Handle form submission
     // Get the form and ABI textarea value
-    const form = event.currentTarget;
-    const abiValue = (form.elements.namedItem("ABI") as HTMLTextAreaElement)
-      .value;
+    // const form = event.currentTarget;
+    // const abiValue = (form.elements.namedItem("ABI") as HTMLTextAreaElement)
+    // .value;
     // Validate the ABI value
     try {
-      JSON.parse(abiValue);
+      JSON.parse(ABIValue);
       setError(null);
-      setABI(abiValue);
+      setABI(ABIValue);
       //travel through the abi and find the functions
-      const abiArray: any = JSON.parse(abiValue);
+      const abiArray: any = JSON.parse(ABIValue);
 
       const functions = abiArray.filter((item) => item.constant === false);
       const constants = abiArray.filter((item) => item.constant === true);
@@ -226,43 +284,20 @@ const FormPage: React.FC = () => {
               <div className="min-h-screen flex items-center justify-center bg-gray-100 py-12 px-4 sm:px-6 lg:px-8">
                 <div className="max-w-md w-full space-y-8 bg-white p-6 rounded-md shadow-md">
                   <div>
-                    <div className="flex justify-center mt-10">
-                      <button
-                        onClick={checkAuth}
-                        style={{
-                          backgroundColor: "#4285F4",
-                          color: "white",
-                          padding: "10px 15px",
-                          borderRadius: "5px",
-                          border: "none",
-                          cursor: "pointer",
-                          display: "flex",
-                          alignItems: "center",
-                          justifyContent: "center",
-                        }}
-                      >
-                        <img
-                          src="https://upload.wikimedia.org/wikipedia/commons/5/53/Google_%22G%22_Logo.svg"
-                          alt="Google Logo"
-                          style={{ width: "20px", marginRight: "10px" }}
-                        />
-                        Sign in with Google
-                      </button>
-                    </div>
                     <h1 className="mt-6 text-center text-3xl font-extrabold text-gray-900">
                       Create a Project
                     </h1>
+                    <div className="flex justify-center mt-10">
+                      <p className="text-orange-400 italic">{status}</p>
+                    </div>
                     <p className="text-gray-900">
                       Place your EVM, smart contract data ABI here to generate a
                       front end interface in forms of widgets for the functinos
                       of the smart contract that you customize. Then you can
                       import these widgets into your website or application.
                     </p>
-                    <p className="text-gray-900">
-                      Current status: {status}, response: {response}
-                    </p>
                   </div>
-                  <form onSubmit={newABI} className="mt-8 space-y-6">
+                  <form onSubmit={handleSubmit} className="mt-8 space-y-6">
                     <div className="rounded-md shadow-sm -space-y-px">
                       {/* Project Name */}
                       <div className="mb-4">
