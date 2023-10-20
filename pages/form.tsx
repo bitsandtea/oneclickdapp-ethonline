@@ -127,21 +127,26 @@ const FormPage: React.FC = () => {
 
     setStatus("Getting session sigs...");
     // -- 6. get session sigs
-    const sessionSigs = await authProvider?.getSessionSigs({
-      pkpPublicKey: pkp.publicKey,
-      authMethod: authMethod,
-      sessionSigsParams: {
-        chain: "ethereum",
-        resourceAbilityRequests: [
-          {
-            resource: new LitActionResource("*"),
-            ability: LitAbility.PKPSigning,
-          },
-        ],
-      },
-    });
-    setSessionSigs(sessionSigs);
-    setResponse(`sessionSigs: ${JSON.stringify(sessionSigs)}`);
+    console.log(authProvider, "authProvider right before");
+    try {
+      const sessionSigs = await authProvider?.getSessionSigs({
+        pkpPublicKey: pkp.publicKey,
+        authMethod: authMethod,
+        sessionSigsParams: {
+          chain: "ethereum",
+          resourceAbilityRequests: [
+            {
+              resource: new LitActionResource("*"),
+              ability: LitAbility.PKPSigning,
+            },
+          ],
+        },
+      });
+      setSessionSigs(sessionSigs);
+      setResponse(`sessionSigs: ${JSON.stringify(sessionSigs)}`);
+    } catch (e) {
+      console.log("Failed to get session sigs:", e);
+    }
   };
 
   const createWallets = async () => {
@@ -190,6 +195,8 @@ const FormPage: React.FC = () => {
     }
 
     // Default to grabbing a wallet connection in a browser
+    console.log(userSigs, "userSigs");
+    // const db = new Database<Schema>(userSigs);
     const db = new Database<Schema>();
 
     const allColumns = "ABI, address, chainID, name, projectID, userID";
@@ -210,6 +217,75 @@ const FormPage: React.FC = () => {
     // Perform a read query, requesting all rows from the table
     const { results } = await db.prepare(`SELECT * FROM ${dbName};`).all();
     console.log("results", results);
+  };
+
+  async function getAccount() {
+    const accounts = await window.ethereum.request({
+      method: "eth_requestAccounts",
+    });
+    return accounts[0]; // Returns the first account, which is usually the currently active one.
+  }
+
+  const createTable = async (
+    ABI: string,
+    address: string,
+    chainID: string,
+    name: string,
+    projectID: string,
+    userID: string
+  ) => {
+    const db = new Database<>();
+    const user_address = await getAccount();
+    const tableName = `${user_address}_${name}`;
+    const allColumns = "ABI, address, chainID, name, projectID, userID";
+    const values = [ABI, address, chainID, name, projectID, userID];
+
+    const createQ = `CREATE TABLE ${tableName} (
+    address TEXT UNIQUE,
+    ABI TEXT NOT NULL,
+    chainID TEXT NOT NULL,
+    name TEXT NOT NULL,
+    projectID TEXT NOT NULL,
+    userID TEXT NOT NULL );
+    INSERT INTO ${tableName} (${allColumns}) 
+    VALUES (?, ?, ?, ?, ?, ?);`;
+    const { meta } = await db.prepare(createQ).bind(values).run();
+
+    // Wait for transaction finality
+    console.log("meat", meta);
+    const txRes = await meta.txn?.wait();
+    console.log("txRes", txRes);
+  };
+
+  const storeDBBackend = async (
+    ABI: string,
+    address: string,
+    chainID: string,
+    name: string,
+    projectID: string,
+    userID: string
+  ) => {
+    const data = {
+      ABI,
+      address,
+      chainID,
+      name,
+      projectID,
+      userID,
+    };
+
+    fetch("/api/tableland", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(data),
+    })
+      .then((response) => response.json())
+      .then((result) => {
+        console.log(result);
+      })
+      .catch((error) => console.error("Error:", error));
   };
   // const newABI = (event: React.FormEvent) => {
   const newABI = (ABIValue: string) => {
