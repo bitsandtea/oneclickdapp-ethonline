@@ -33,13 +33,16 @@ import {Policies} from "@tableland/evm/contracts/policies/Policies.sol";
         // First, establish WHERE clauses (i.e., where the address is the caller)
         string[] memory whereClause = new string[](1);
         whereClause[0] = string.concat(
-            "address=",
+            "userID=",
             SQLHelpers.quote(Strings.toHexString(caller))
         );
 
         // Restrict updates to a single `val` column
-        string[] memory updatableColumns = new string[](1);
-        updatableColumns[0] = "val";
+        string[] memory updatableColumns = new string[](3);
+        updatableColumns[0] = "name";
+        updatableColumns[1] = "chainID";
+        updatableColumns[2] = "ABI";
+        
 
         // Now, return the policy that gates by the WHERE clause & updatable columns
         // Note: insert calls won't need to check these additional parameters; they're just for the updates
