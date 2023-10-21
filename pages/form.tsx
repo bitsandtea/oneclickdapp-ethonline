@@ -1,9 +1,9 @@
 import { useEffect, useState } from "react";
 import { ToastContainer, toast } from "react-toastify";
 import * as LitJsSdk from "@lit-protocol/lit-node-client";
-
+import useLocalStorage from "@/utils/useLocalStorage";
 import { PKPClient } from "@lit-protocol/pkp-client";
-import { ethers } from "ethers";
+import { ethers, utils } from "ethers";
 import { useRouter } from "next/router";
 import "../styles/globals.css";
 import EditFunction from "../components/EditFunction";
@@ -21,6 +21,7 @@ import { PKPEthersWallet } from "@lit-protocol/pkp-ethers";
 import initLit, { getLitClient } from "@/utils/lit";
 import oneClickABI from "@/ABIs/OneClick";
 import web3 from "@/utils/web3";
+import { ethRequestHandler } from "@lit-protocol/pkp-ethers";
 
 const wizardSteps = [
   {
@@ -44,10 +45,12 @@ const FormPage: React.FC = () => {
   const [functions, setFunctions] = useState<[Function] | false>(false);
   const [response, setResponse] = useState("");
   const [authProvider, setAuthProvider] = useState<any>(null);
-  const [usersPKP, setUsersPKP] = useState<any>(null);
-  const [userSigs, setSessionSigs] = useState<any>(null);
+  const [thisAddress, setThisAddress] = useState<string>("");
   const [authMethod, setAuthMethod] = useState<any>(null);
   const [enableSave, setEnableSave] = useState<boolean>(false);
+  const [pkpWallet, setPKPWallet] = useState<any>(null);
+  const [usersPKP, setUsersPKP] = useState<any>(null);
+  const [userSigs, setSessionSigs] = useState<any>(null);
 
   const moveStep = (forward: boolean): void => {
     setStep((prevStep) => {
@@ -81,7 +84,7 @@ const FormPage: React.FC = () => {
   // 2. Create a LitAuthClient instance
   useEffect(() => {
     if (authProvider !== null) {
-      if (authMethod == null) authenticate();
+      // if (authMethod == null) authenticate(); // TODO enable
     }
   }, [authProvider]);
 
@@ -93,16 +96,50 @@ const FormPage: React.FC = () => {
     if (usersPKP !== null) {
       createWallets();
       setEnableSave(true);
-      console.log("enablesv", enableSave);
     }
   }, [usersPKP]);
+
+  // Load data from localStorage when component mounts
+  useEffect(() => {
+    const savedUsersPKP = localStorage.getItem("LIT_usersPKP");
+    const savedUserSigs = localStorage.getItem("LIT_userSigs");
+    const savedPkpWallet = localStorage.getItem("LIT_pkpWallet");
+
+    if (savedPkpWallet) {
+      setPKPWallet(JSON.parse(savedPkpWallet));
+    }
+    if (savedUsersPKP) {
+      setUsersPKP(JSON.parse(savedUsersPKP));
+    }
+    if (savedUserSigs) {
+      setSessionSigs(JSON.parse(savedUserSigs));
+    }
+  }, []);
+
+  // Update data in localStorage whenever state changes
+  useEffect(() => {
+    if (usersPKP) {
+      localStorage.setItem("LIT_usersPKP", JSON.stringify(usersPKP));
+    }
+  }, [usersPKP]);
+
+  useEffect(() => {
+    if (userSigs) {
+      localStorage.setItem("LIT_userSigs", JSON.stringify(userSigs));
+    }
+  }, [userSigs]);
+  useEffect(() => {
+    if (pkpWallet) {
+      localStorage.setItem("LIT_pkpWallet", JSON.stringify(pkpWallet));
+    }
+  }, [pkpWallet]);
 
   const authenticate = async () => {
     try {
       const fetchedAuthMethod = await authProvider.authenticate();
       setAuthMethod(fetchedAuthMethod);
     } catch (e) {
-      redirectToAuth();
+      // redirectToAuth();
       console.log("error: ", e);
     }
   };
@@ -139,11 +176,15 @@ const FormPage: React.FC = () => {
         pkpPublicKey: pkp.publicKey,
         authMethod: authMethod,
         sessionSigsParams: {
-          chain: "ethereum",
+          chain: "mumbai",
           resourceAbilityRequests: [
             {
               resource: new LitActionResource("*"),
               ability: LitAbility.PKPSigning,
+            },
+            {
+              resource: new LitActionResource("*"),
+              ability: LitAbility.LitActionExecution,
             },
           ],
         },
@@ -162,9 +203,12 @@ const FormPage: React.FC = () => {
       pkpPubKey: usersPKP.publicKey,
       controllerSessionSigs: userSigs,
     });
-    pkpWallet.setRpc(process.env.INFURA_URL || "");
+    pkpWallet.setRpc(process.env.NEXT_PUBLIC_INFURA_URL || "");
     await pkpWallet.init();
+    setPKPWallet(pkpWallet);
+
     const address = await pkpWallet.getAddress();
+    setThisAddress(address);
     setStatus("");
   };
 
@@ -195,104 +239,25 @@ const FormPage: React.FC = () => {
     projectID: string,
     userID: string
   ) => {
-    const pkpClient = new PKPClient({
-      controllerSessionSigs: userSigs,
-      pkpPubKey: usersPKP.publicKey,
-      ...(process.env.INFURA_URL
-        ? {
-            rpcs: {},
-          }
-        : {}),
-    });
-    console.log("pkpClient: ", pkpClient);
-    const ethWallet = pkpClient.getEthWallet();
+    console.log(pkpWallet);
+    const oneClickContract = new ethers.Contract(
+      process.env.NEXT_PUBLIC_ONECLICK_ADDRESS || "",
+      oneClickABI,
+      pkpWallet
+    );
 
-    console.log("ethwallet: ", ethWallet);
-
-    const gasPrice = await ethWallet.getGasPrice();
     const encABI = (await encrypt(ABI)).ciphertext;
     const encName = (await encrypt(name)).ciphertext;
     const encProjectID = (await encrypt(projectID)).ciphertext;
-
-    const iface = new ethers.utils.Interface(oneClickABI);
-    const encodeParams = [encProjectID, encName, address, chainID, encABI];
-    const encodedData = iface.encodeFunctionData(
-      "insertIntoTable",
-      encodeParams
+    const tx = await oneClickContract.insertIntoTable(
+      encProjectID,
+      encName,
+      address,
+      chainID,
+      encABI
     );
 
-    const from = usersPKP.ethAddress;
-    const to = process.env.NEXT_PUBLIC_ONECLICK_ADDRESS;
-    const gasLimit = ethers.BigNumber.from("21000");
-    const value = ethers.BigNumber.from("0");
-    const data = encodedData;
-
-    // @lit-protocol/pkp-ethers will automatically add missing fields (nonce, chainId, gasPrice, gasLimit)
-    const transactionRequest = {
-      from,
-      to,
-      gasLimit,
-      value,
-      data,
-    };
-    const client = await getLitClient();
-    const res = await client.pkpSign({
-      sessionSigs: userSigs,
-      toSign: ethers.utils.arrayify(ethers.utils.keccak256(encodedData)),
-      pubKey: ethWallet.publicKey,
-    });
-    console.log(res);
-
-    const provider = new ethers.providers.InfuraProvider(
-      80001,
-      process.env.INFURA_API_KEY
-    );
-
-    console.log("tx request", transactionRequest);
-    try {
-      const tx = await provider.sendTransaction(res);
-      console.log("tx:", tx);
-      await tx.wait();
-      console.log("tx mined:", tx);
-    } catch (e) {
-      console.log("Failed to send tx:", e);
-    }
-
-    // console.log("tx request", transactionRequest);
-    // const client = await getLitClient();
-    // console.log(userSigs, ethWallet.publicKey);
-    // try {
-    //   const res = await client.executeJs({
-    //     sessionSigs: userSigs,
-    //     // code: `
-    //     // (async () => {
-    //     //    const sigShare = await LitActions.signEcdsa({ toSign, publicKey, sigName });
-    //     // })();
-    //     code: `
-    //     (async () => {
-    //        const permitted = await LitActions.getPermittedActions({ tokenId });
-    //     })();
-    //   `,
-    //     jsParams: {
-    //       // toSign: transactionRequest,
-    //       // sigName: "test-sign-tx",
-    //       // publicKey: ethWallet.publicKey,
-    //       tokenId: usersPKP.pkpPubKey,
-    //     },
-    //   });
-    //   console.log("res:", res, res.signatures["test-sign-tx"]);
-    // } catch (e) {
-    //   console.log("error executing JS: ", e);
-    // }
-
-    // const signedTransactionRequest = await ethWallet.signTransaction(
-    //   transactionRequest
-    // );
-
-    // const sent = await ethWallet.sendTransaction(signedTransactionRequest);
-
-    // console.log("Data sent:", sent);
-    return true;
+    console.log("Tx sent: ", tx);
 
     // const decryptedString = await LitJsSdk.decryptToString(
     //   {
@@ -307,6 +272,38 @@ const FormPage: React.FC = () => {
 
     // console.log("decryptedString", decryptedString);
   };
+
+  async function getGasPricesInHex(percentageIncrease: number) {
+    try {
+      const response = await fetch(
+        "https://gasstation-testnet.polygon.technology/v2"
+      );
+      if (!response.ok) {
+        throw new Error("Network response was not ok " + response.statusText);
+      }
+
+      const gasData = await response.json();
+      const increaseFactor = 1 + percentageIncrease / 100;
+
+      const gasPricesHex = {
+        low: utils.hexlify(
+          BigInt(Math.round(gasData.safeLow.maxFee * 1e9 * increaseFactor))
+        ),
+        average: utils.hexlify(
+          BigInt(Math.round(gasData.standard.maxFee * 1e9 * increaseFactor))
+        ),
+        high: utils.hexlify(
+          BigInt(Math.round(gasData.fast.maxFee * 1e9 * increaseFactor))
+        ),
+      };
+
+      return gasPricesHex;
+    } catch (error) {
+      console.error("Error fetching gas prices:", error);
+      throw error; // Re-throw the error so it can be handled by the caller if necessary
+    }
+  }
+
   const encrypt = async (message: string) => {
     const litClient = await getLitClient();
 
@@ -387,6 +384,44 @@ const FormPage: React.FC = () => {
       }
     }
   };
+
+  async function getTransactionCount(
+    address: string,
+    blockNumber: string = "latest",
+    plus: number = 0
+  ): Promise<string> {
+    const url =
+      "https://polygon-mumbai.infura.io/v3/80429791d64d4372aaabdf37945b5b43";
+    const headers = {
+      "Content-Type": "application/json",
+    };
+    const body = JSON.stringify({
+      jsonrpc: "2.0",
+      method: "eth_getTransactionCount",
+      params: [address, blockNumber],
+      id: 1,
+    });
+
+    try {
+      const response = await fetch(url, {
+        method: "POST",
+        headers: headers,
+        body: body,
+      });
+
+      if (!response.ok) {
+        throw new Error("Network response was not ok " + response.statusText);
+      }
+
+      const data = await response.json();
+      const nonce = parseInt(data.result, 16); // Convert nonce from hex to decimal
+      const adjustedNonce = nonce + plus; // Add plus to the nonce
+      return `0x${adjustedNonce.toString(16)}`; // Convert adjusted nonce back to hex
+    } catch (error) {
+      console.error("Error fetching transaction count:", error);
+      throw error;
+    }
+  }
 
   const selectAllFunctions = (select: boolean) => {
     if (functions) {
