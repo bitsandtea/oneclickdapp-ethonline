@@ -2,18 +2,20 @@ import { ethers } from "hardhat";
 
 async function main() {
   const [deployer] = await ethers.getSigners();
-  const tableId = 7955;
+  // const tableId = 7955;
   // Deploy the Example contract
-  // const OneClickTable = await ethers.getContractFactory("OneClickTable");
+  const OneClickTable = await ethers.getContractFactory("OneClickTable");
   // const oneClick = await OneClickTable.deploy(deployer.address, tableId);
-  // const oneclickAddr = await oneClick.getAddress();
-  // console.log(`OneClick contract deployed to '${oneclickAddr}'.\n`);
-  // await waitSeconds(60);
-  // await hre.run("verify:verify", {
-  //   address: oneclickAddr,
-  //   constructorArguments: [deployer.address, tableId],
-  // });
+  const oneClick = await OneClickTable.deploy(deployer.address);
+  const oneclickAddr = await oneClick.getAddress();
+  console.log(`OneClick contract deployed to '${oneclickAddr}'.\n`);
+  await waitSeconds(60);
+  await hre.run("verify:verify", {
+    address: oneclickAddr,
+    constructorArguments: [deployer.address],
+  });
 
+  /*
   // Deploy the RowController contract
   const RowController = await ethers.getContractFactory("RowController");
   const rowController = await RowController.deploy(deployer.address);
@@ -38,7 +40,7 @@ async function main() {
   // // Insert with a non-owner account
   // tx = await oneClick.connect(other).insertIntoTable("test other");
   // await tx.wait();
-
+  */
   function waitSeconds(seconds: number) {
     const secs = seconds * 1000;
     return new Promise<void>((resolve) => {

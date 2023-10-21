@@ -12,17 +12,22 @@ contract OneClickTable is Ownable, IERC721Receiver{
   ITablelandTables tableland = TablelandDeployments.get();
 
   // Add a constructor that creates and inserts data
-  constructor(address _initialOwner, uint256 _tableId) Ownable(_initialOwner)  {
-    tableId = _tableId;
-    // tableId = tableland.create(
-    //     address(this),
-    //     SQLHelpers.toCreateFromSchema(
-    //         "projectID text, userID text, name text, contractAddress text, chainID text, ABI BLOB", _TABLE_PREFIX
-    //     )
-    // );
+  // constructor(address _initialOwner, uint256 _tableId) Ownable(_initialOwner)  {
+    constructor(address _initialOwner) Ownable(_initialOwner)  {
+    // tableId = _tableId;
+    tableId = tableland.create(
+        address(this),
+        SQLHelpers.toCreateFromSchema(
+            "projectID text, userID text, name text, contractAddress text, chainID text, ABI text", _TABLE_PREFIX
+        )
+    );
   }
 
    // Let anyone insert into the table
+   
+      
+      
+      
     function insertIntoTable(
       string memory _projectID, 
       string memory _name, 
