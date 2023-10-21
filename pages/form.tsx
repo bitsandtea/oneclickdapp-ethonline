@@ -1,7 +1,9 @@
 import { useEffect, useState } from "react";
 import { ToastContainer, toast } from "react-toastify";
-import { Database } from "@tableland/sdk";
+import * as LitJsSdk from "@lit-protocol/lit-node-client";
 
+import { PKPClient } from "@lit-protocol/pkp-client";
+import { ethers } from "ethers";
 import { useRouter } from "next/router";
 import "../styles/globals.css";
 import EditFunction from "../components/EditFunction";
@@ -12,11 +14,13 @@ import {
   GoogleProvider,
   LitAuthClient,
 } from "@lit-protocol/lit-auth-client";
-import { ProviderType } from "@lit-protocol/constants";
+
 import { LitNodeClient } from "@lit-protocol/lit-node-client";
 import { LitAbility, LitActionResource } from "@lit-protocol/auth-helpers";
 import { PKPEthersWallet } from "@lit-protocol/pkp-ethers";
-import initLit from "@/utils/lit";
+import initLit, { getLitClient } from "@/utils/lit";
+import oneClickABI from "@/ABIs/OneClick";
+import web3 from "@/utils/web3";
 
 const wizardSteps = [
   {
@@ -43,6 +47,7 @@ const FormPage: React.FC = () => {
   const [usersPKP, setUsersPKP] = useState<any>(null);
   const [userSigs, setSessionSigs] = useState<any>(null);
   const [authMethod, setAuthMethod] = useState<any>(null);
+  const [enableSave, setEnableSave] = useState<boolean>(false);
 
   const moveStep = (forward: boolean): void => {
     setStep((prevStep) => {
@@ -63,7 +68,6 @@ const FormPage: React.FC = () => {
   };
 
   useEffect(() => {}, [abi, functions]);
-
   // steps for using LIT auth
   // 1. Create a LitAuthClient instance
   useEffect(() => {
@@ -74,7 +78,6 @@ const FormPage: React.FC = () => {
 
     fetchAuthProvider();
   }, []);
-
   // 2. Create a LitAuthClient instance
   useEffect(() => {
     if (authProvider !== null) {
@@ -87,7 +90,11 @@ const FormPage: React.FC = () => {
   }, [authMethod]);
 
   useEffect(() => {
-    if (usersPKP !== null) createWallets();
+    if (usersPKP !== null) {
+      createWallets();
+      setEnableSave(true);
+      console.log("enablesv", enableSave);
+    }
   }, [usersPKP]);
 
   const authenticate = async () => {
@@ -127,7 +134,6 @@ const FormPage: React.FC = () => {
 
     setStatus("Getting session sigs...");
     // -- 6. get session sigs
-    console.log(authProvider, "authProvider right before");
     try {
       const sessionSigs = await authProvider?.getSessionSigs({
         pkpPublicKey: pkp.publicKey,
@@ -156,6 +162,7 @@ const FormPage: React.FC = () => {
       pkpPubKey: usersPKP.publicKey,
       controllerSessionSigs: userSigs,
     });
+    pkpWallet.setRpc(process.env.INFURA_URL || "");
     await pkpWallet.init();
     const address = await pkpWallet.getAddress();
     setStatus("");
@@ -166,15 +173,18 @@ const FormPage: React.FC = () => {
     const ABIValue = (
       event.currentTarget.elements.namedItem("ABI") as HTMLTextAreaElement
     ).value;
+    const address = (
+      event.currentTarget.elements.namedItem(
+        "contractAddress"
+      ) as HTMLInputElement
+    ).value;
+    const chainID = "155"; //TODO Hardcoded
+    const name = (
+      event.currentTarget.elements.namedItem("projectName") as HTMLInputElement
+    ).value;
+    const projectID = `usersPKP.publicKey_${name}`;
     newABI(ABIValue);
-    storeDB(
-      "ABI VAlue here",
-      "address",
-      "chainID",
-      "name",
-      "projectID",
-      "userID"
-    );
+    storeDB(ABIValue, address, chainID, name, projectID, usersPKP.ethAddress);
   };
 
   const storeDB = async (
@@ -185,107 +195,151 @@ const FormPage: React.FC = () => {
     projectID: string,
     userID: string
   ) => {
-    // Insert a row into the table
-    interface Schema {
-      ABI: string;
-      chainID: string;
-      name: string;
-      projectID: string;
-      userID: string;
+    const pkpClient = new PKPClient({
+      controllerSessionSigs: userSigs,
+      pkpPubKey: usersPKP.publicKey,
+      ...(process.env.INFURA_URL
+        ? {
+            rpcs: {},
+          }
+        : {}),
+    });
+    console.log("pkpClient: ", pkpClient);
+    const ethWallet = pkpClient.getEthWallet();
+
+    console.log("ethwallet: ", ethWallet);
+
+    const gasPrice = await ethWallet.getGasPrice();
+    const encABI = (await encrypt(ABI)).ciphertext;
+    const encName = (await encrypt(name)).ciphertext;
+    const encProjectID = (await encrypt(projectID)).ciphertext;
+
+    const iface = new ethers.utils.Interface(oneClickABI);
+    const encodeParams = [encProjectID, encName, address, chainID, encABI];
+    const encodedData = iface.encodeFunctionData(
+      "insertIntoTable",
+      encodeParams
+    );
+
+    const from = usersPKP.ethAddress;
+    const to = process.env.NEXT_PUBLIC_ONECLICK_ADDRESS;
+    const gasLimit = ethers.BigNumber.from("21000");
+    const value = ethers.BigNumber.from("0");
+    const data = encodedData;
+
+    // @lit-protocol/pkp-ethers will automatically add missing fields (nonce, chainId, gasPrice, gasLimit)
+    const transactionRequest = {
+      from,
+      to,
+      gasLimit,
+      value,
+      data,
+    };
+    const client = await getLitClient();
+    const res = await client.pkpSign({
+      sessionSigs: userSigs,
+      toSign: ethers.utils.arrayify(ethers.utils.keccak256(encodedData)),
+      pubKey: ethWallet.publicKey,
+    });
+    console.log(res);
+
+    const provider = new ethers.providers.InfuraProvider(
+      80001,
+      process.env.INFURA_API_KEY
+    );
+
+    console.log("tx request", transactionRequest);
+    try {
+      const tx = await provider.sendTransaction(res);
+      console.log("tx:", tx);
+      await tx.wait();
+      console.log("tx mined:", tx);
+    } catch (e) {
+      console.log("Failed to send tx:", e);
     }
 
-    // Default to grabbing a wallet connection in a browser
-    console.log(userSigs, "userSigs");
-    // const db = new Database<Schema>(userSigs);
-    const db = new Database<Schema>();
+    // console.log("tx request", transactionRequest);
+    // const client = await getLitClient();
+    // console.log(userSigs, ethWallet.publicKey);
+    // try {
+    //   const res = await client.executeJs({
+    //     sessionSigs: userSigs,
+    //     // code: `
+    //     // (async () => {
+    //     //    const sigShare = await LitActions.signEcdsa({ toSign, publicKey, sigName });
+    //     // })();
+    //     code: `
+    //     (async () => {
+    //        const permitted = await LitActions.getPermittedActions({ tokenId });
+    //     })();
+    //   `,
+    //     jsParams: {
+    //       // toSign: transactionRequest,
+    //       // sigName: "test-sign-tx",
+    //       // publicKey: ethWallet.publicKey,
+    //       tokenId: usersPKP.pkpPubKey,
+    //     },
+    //   });
+    //   console.log("res:", res, res.signatures["test-sign-tx"]);
+    // } catch (e) {
+    //   console.log("error executing JS: ", e);
+    // }
 
-    const allColumns = "ABI, address, chainID, name, projectID, userID";
-    const values = [ABI, address, chainID, name, projectID, userID];
-    const dbName = "project_11155111_97";
-    const { meta: insert } = await db
-      .prepare(
-        `INSERT INTO ${dbName} (${allColumns}) VALUES (?, ?, ?, ?, ?, ?);`
-      )
-      .bind(values)
-      .run();
+    // const signedTransactionRequest = await ethWallet.signTransaction(
+    //   transactionRequest
+    // );
 
-    // Wait for transaction finality
-    console.log("insert", insert);
-    const txRes = await insert.txn?.wait();
-    console.log("txRes", txRes);
+    // const sent = await ethWallet.sendTransaction(signedTransactionRequest);
 
-    // Perform a read query, requesting all rows from the table
-    const { results } = await db.prepare(`SELECT * FROM ${dbName};`).all();
-    console.log("results", results);
+    // console.log("Data sent:", sent);
+    return true;
+
+    // const decryptedString = await LitJsSdk.decryptToString(
+    //   {
+    //     accessControlConditions,
+    //     ciphertext,
+    //     dataToEncryptHash,
+    //     authSig,
+    //     chain,
+    //   },
+    //   client
+    // );
+
+    // console.log("decryptedString", decryptedString);
   };
+  const encrypt = async (message: string) => {
+    const litClient = await getLitClient();
 
-  async function getAccount() {
-    const accounts = await window.ethereum.request({
-      method: "eth_requestAccounts",
-    });
-    return accounts[0]; // Returns the first account, which is usually the currently active one.
-  }
+    const chain = "mumbai";
 
-  const createTable = async (
-    ABI: string,
-    address: string,
-    chainID: string,
-    name: string,
-    projectID: string,
-    userID: string
-  ) => {
-    const db = new Database<>();
-    const user_address = await getAccount();
-    const tableName = `${user_address}_${name}`;
-    const allColumns = "ABI, address, chainID, name, projectID, userID";
-    const values = [ABI, address, chainID, name, projectID, userID];
-
-    const createQ = `CREATE TABLE ${tableName} (
-    address TEXT UNIQUE,
-    ABI TEXT NOT NULL,
-    chainID TEXT NOT NULL,
-    name TEXT NOT NULL,
-    projectID TEXT NOT NULL,
-    userID TEXT NOT NULL );
-    INSERT INTO ${tableName} (${allColumns}) 
-    VALUES (?, ?, ?, ?, ?, ?);`;
-    const { meta } = await db.prepare(createQ).bind(values).run();
-
-    // Wait for transaction finality
-    console.log("meat", meta);
-    const txRes = await meta.txn?.wait();
-    console.log("txRes", txRes);
-  };
-
-  const storeDBBackend = async (
-    ABI: string,
-    address: string,
-    chainID: string,
-    name: string,
-    projectID: string,
-    userID: string
-  ) => {
-    const data = {
-      ABI,
-      address,
-      chainID,
-      name,
-      projectID,
-      userID,
-    };
-
-    fetch("/api/tableland", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
+    const accessControlConditions = [
+      {
+        contractAddress: "",
+        standardContractType: "",
+        chain,
+        method: "eth_getBalance",
+        parameters: [":userAddress", "latest"],
+        returnValueTest: {
+          comparator: ">=",
+          value: "1000000000000", // 0.000001 ETH
+        },
       },
-      body: JSON.stringify(data),
-    })
-      .then((response) => response.json())
-      .then((result) => {
-        console.log(result);
-      })
-      .catch((error) => console.error("Error:", error));
+    ];
+
+    const encryptable = {
+      accessControlConditions,
+      sessionSigs: userSigs,
+      chain: "mumbai",
+      dataToEncrypt: message,
+    };
+    const { ciphertext, dataToEncryptHash } = await LitJsSdk.encryptString(
+      encryptable,
+      litClient
+    );
+    return {
+      ciphertext,
+      dataToEncryptHash,
+    };
   };
   // const newABI = (event: React.FormEvent) => {
   const newABI = (ABIValue: string) => {
@@ -384,6 +438,7 @@ const FormPage: React.FC = () => {
                           Project Name:
                         </label>
                         <input
+                          defaultValue="USDC Token"
                           type="text"
                           id="projectName"
                           required
@@ -402,6 +457,7 @@ const FormPage: React.FC = () => {
                         <input
                           type="text"
                           id="contractAddress"
+                          defaultValue="0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48"
                           required
                           className="mt-1 p-2 w-full border rounded-md focus:outline-none focus:ring focus:border-blue-300"
                         />
@@ -428,6 +484,7 @@ const FormPage: React.FC = () => {
                     <div>
                       <button
                         type="submit"
+                        disabled={!enableSave}
                         className="group relative w-full flex justify-center py-2 px-4 border border-transparent text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
                       >
                         Continue

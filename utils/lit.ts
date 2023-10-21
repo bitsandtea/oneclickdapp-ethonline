@@ -1,5 +1,6 @@
 import { GoogleProvider, LitAuthClient } from "@lit-protocol/lit-auth-client";
 import { ProviderType } from "@lit-protocol/constants";
+// import { LitNodeClient } from "@lit-protocol/lit-node-client";
 
 //create exportable function
 const initLit = async () => {
@@ -26,6 +27,18 @@ const initLit = async () => {
     }
   );
   return authProvider;
+};
+
+export const getLitClient = async () => {
+  // -- 1. Create a LitAuthClient instance
+  const litNodeClient = new LitNodeClient({
+    litNetwork: "cayenne",
+    debug: true,
+  });
+
+  await litNodeClient.connect();
+
+  return litNodeClient;
 };
 
 export default initLit;

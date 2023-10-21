@@ -13,6 +13,7 @@
     "@lit-protocol/constants": "^3.0.12",
     "@lit-protocol/lit-auth-client": "^3.0.12",
     "@lit-protocol/lit-node-client": "^3.0.12",
+    "@lit-protocol/pkp-client": "^3.0.12",
     "@lit-protocol/pkp-ethers": "^3.0.12",
     "@lit-protocol/types": "^3.0.12",
     "@openzeppelin/contracts": "^5.0.0",

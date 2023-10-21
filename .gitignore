@@ -3,6 +3,6 @@ node_modules
 .DS_Store
 .vscode
 backups/
-.env*.local
 .tablelandrc.json
 notes.txt
+.env

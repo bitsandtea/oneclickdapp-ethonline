@@ -79,3 +79,7 @@ tableland write "INSERT INTO project_11155111_97 VALUES ('test-1', 'test-1', 'te
 [Registry] Private Key: 0xdf57089febbacf7ba0bc227dafbffa9fc08a93fdc68e1e42411a14efcf23656e
 
 tableland Pilot 
+
+
+oneclick latest:
+0x288b2e5c2acd03f846111577d14a820869d0269a
