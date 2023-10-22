@@ -5,15 +5,15 @@ const GetWidgetButton = ({ code }) => {
   const [bundleUrl, setBundleUrl] = useState("");
 
   const compileComponent = async () => {
-    console.log("code is: ", code);
-    // try {
-    //   const response = await axios.post("http://localhost:3000/api/compile", {
-    //     code,
-    //   });
-    //   setBundleUrl(response.data.url);
-    // } catch (error) {
-    //   console.error("Compilation failed", error);
-    // }
+    try {
+      const response = await axios.post("http://localhost:3000/api/compile", {
+        code,
+      });
+      console.log("response is: ", response);
+      setBundleUrl(response.data.url);
+    } catch (error) {
+      console.error("Compilation failed", error);
+    }
   };
 
   return (

@@ -1,27 +1,16 @@
 import { useEffect, useState } from "react";
-import { ToastContainer, toast } from "react-toastify";
-import * as LitJsSdk from "@lit-protocol/lit-node-client";
-import useLocalStorage from "@/utils/useLocalStorage";
-import { PKPClient } from "@lit-protocol/pkp-client";
 import { ethers, utils } from "ethers";
 import { useRouter } from "next/router";
 import "../styles/globals.css";
 import EditFunction from "../components/EditFunction";
 import FooterNavbar from "../components/FooterNavbar";
 import ReactDOMServer from "react-dom/server";
-import {
-  EthWalletProvider,
-  GoogleProvider,
-  LitAuthClient,
-} from "@lit-protocol/lit-auth-client";
-
-import { LitNodeClient } from "@lit-protocol/lit-node-client";
 import { LitAbility, LitActionResource } from "@lit-protocol/auth-helpers";
 import { PKPEthersWallet } from "@lit-protocol/pkp-ethers";
-import initLit, { getLitClient } from "@/utils/lit";
+import initLit, { encrypt } from "@/utils/lit";
 import oneClickABI from "@/ABIs/OneClick";
-import web3 from "@/utils/web3";
-import { ethRequestHandler } from "@lit-protocol/pkp-ethers";
+import uploadFile from "@/utils/web3storage";
+import EditFunctionPreview from "@/components/EditFunctionPreview";
 
 const wizardSteps = [
   {
@@ -51,7 +40,8 @@ const FormPage: React.FC = () => {
   const [pkpWallet, setPKPWallet] = useState<any>(null);
   const [usersPKP, setUsersPKP] = useState<any>(null);
   const [userSigs, setSessionSigs] = useState<any>(null);
-
+  const [txHash, setTxHash] = useState<string>("");
+  const [submitIsLoading, setSubmitIsLoading] = useState<boolean>(false);
   const moveStep = (forward: boolean): void => {
     setStep((prevStep) => {
       if (forward) {
@@ -98,6 +88,17 @@ const FormPage: React.FC = () => {
       setEnableSave(true);
     }
   }, [usersPKP]);
+
+  useEffect(() => {
+    switch (step) {
+      case 0:
+        break;
+      case 1:
+        break;
+      case 2:
+        break;
+    }
+  }, [step]);
 
   // Load data from localStorage when component mounts
   useEffect(() => {
@@ -214,6 +215,7 @@ const FormPage: React.FC = () => {
 
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
+    setSubmitIsLoading(true);
     const ABIValue = (
       event.currentTarget.elements.namedItem("ABI") as HTMLTextAreaElement
     ).value;
@@ -239,112 +241,33 @@ const FormPage: React.FC = () => {
     projectID: string,
     userID: string
   ) => {
-    console.log(pkpWallet);
     const oneClickContract = new ethers.Contract(
       process.env.NEXT_PUBLIC_ONECLICK_ADDRESS || "",
       oneClickABI,
       pkpWallet
     );
 
-    const encABI = (await encrypt(ABI)).ciphertext;
-    const encName = (await encrypt(name)).ciphertext;
-    const encProjectID = (await encrypt(projectID)).ciphertext;
+    const encABI = (await encrypt(ABI, userSigs)).ciphertext;
+    const encName = (await encrypt(name, userSigs)).ciphertext;
+    const encProjectID = (await encrypt(projectID, userSigs)).ciphertext;
+
+    //upload encrypted ABI
+    const ABIStoredHash = await uploadFile(encABI);
     const tx = await oneClickContract.insertIntoTable(
       encProjectID,
       encName,
       address,
       chainID,
-      encABI
+      ABIStoredHash,
+      { gasLimit: utils.parseUnits("180000", "wei") }
     );
-
-    console.log("Tx sent: ", tx);
-
-    // const decryptedString = await LitJsSdk.decryptToString(
-    //   {
-    //     accessControlConditions,
-    //     ciphertext,
-    //     dataToEncryptHash,
-    //     authSig,
-    //     chain,
-    //   },
-    //   client
-    // );
-
-    // console.log("decryptedString", decryptedString);
+    setTxHash(tx.hash);
+    await tx.wait();
+    setSubmitIsLoading(false);
+    moveStep(true);
   };
 
-  async function getGasPricesInHex(percentageIncrease: number) {
-    try {
-      const response = await fetch(
-        "https://gasstation-testnet.polygon.technology/v2"
-      );
-      if (!response.ok) {
-        throw new Error("Network response was not ok " + response.statusText);
-      }
-
-      const gasData = await response.json();
-      const increaseFactor = 1 + percentageIncrease / 100;
-
-      const gasPricesHex = {
-        low: utils.hexlify(
-          BigInt(Math.round(gasData.safeLow.maxFee * 1e9 * increaseFactor))
-        ),
-        average: utils.hexlify(
-          BigInt(Math.round(gasData.standard.maxFee * 1e9 * increaseFactor))
-        ),
-        high: utils.hexlify(
-          BigInt(Math.round(gasData.fast.maxFee * 1e9 * increaseFactor))
-        ),
-      };
-
-      return gasPricesHex;
-    } catch (error) {
-      console.error("Error fetching gas prices:", error);
-      throw error; // Re-throw the error so it can be handled by the caller if necessary
-    }
-  }
-
-  const encrypt = async (message: string) => {
-    const litClient = await getLitClient();
-
-    const chain = "mumbai";
-
-    const accessControlConditions = [
-      {
-        contractAddress: "",
-        standardContractType: "",
-        chain,
-        method: "eth_getBalance",
-        parameters: [":userAddress", "latest"],
-        returnValueTest: {
-          comparator: ">=",
-          value: "1000000000000", // 0.000001 ETH
-        },
-      },
-    ];
-
-    const encryptable = {
-      accessControlConditions,
-      sessionSigs: userSigs,
-      chain: "mumbai",
-      dataToEncrypt: message,
-    };
-    const { ciphertext, dataToEncryptHash } = await LitJsSdk.encryptString(
-      encryptable,
-      litClient
-    );
-    return {
-      ciphertext,
-      dataToEncryptHash,
-    };
-  };
-  // const newABI = (event: React.FormEvent) => {
   const newABI = (ABIValue: string) => {
-    // Handle form submission
-    // Get the form and ABI textarea value
-    // const form = event.currentTarget;
-    // const abiValue = (form.elements.namedItem("ABI") as HTMLTextAreaElement)
-    // .value;
     // Validate the ABI value
     try {
       JSON.parse(ABIValue);
@@ -356,7 +279,6 @@ const FormPage: React.FC = () => {
       const functions = abiArray.filter((item) => item.constant === false);
       const constants = abiArray.filter((item) => item.constant === true);
       setFunctions(functions);
-      moveStep(true);
     } catch (error) {
       setError("ABI must be valid JSON");
       setABI(false);
@@ -384,44 +306,6 @@ const FormPage: React.FC = () => {
       }
     }
   };
-
-  async function getTransactionCount(
-    address: string,
-    blockNumber: string = "latest",
-    plus: number = 0
-  ): Promise<string> {
-    const url =
-      "https://polygon-mumbai.infura.io/v3/80429791d64d4372aaabdf37945b5b43";
-    const headers = {
-      "Content-Type": "application/json",
-    };
-    const body = JSON.stringify({
-      jsonrpc: "2.0",
-      method: "eth_getTransactionCount",
-      params: [address, blockNumber],
-      id: 1,
-    });
-
-    try {
-      const response = await fetch(url, {
-        method: "POST",
-        headers: headers,
-        body: body,
-      });
-
-      if (!response.ok) {
-        throw new Error("Network response was not ok " + response.statusText);
-      }
-
-      const data = await response.json();
-      const nonce = parseInt(data.result, 16); // Convert nonce from hex to decimal
-      const adjustedNonce = nonce + plus; // Add plus to the nonce
-      return `0x${adjustedNonce.toString(16)}`; // Convert adjusted nonce back to hex
-    } catch (error) {
-      console.error("Error fetching transaction count:", error);
-      throw error;
-    }
-  }
 
   const selectAllFunctions = (select: boolean) => {
     if (functions) {
@@ -477,7 +361,7 @@ const FormPage: React.FC = () => {
                           type="text"
                           id="projectName"
                           required
-                          className="mt-1 p-2 w-full border rounded-md focus:outline-none focus:ring focus:border-blue-300"
+                          className="mt-1 p-2 w-full border rounded-md focus:outline-none focus:ring focus:border-blue-300 text-black"
                         />
                       </div>
 
@@ -494,7 +378,7 @@ const FormPage: React.FC = () => {
                           id="contractAddress"
                           defaultValue="0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48"
                           required
-                          className="mt-1 p-2 w-full border rounded-md focus:outline-none focus:ring focus:border-blue-300"
+                          className="mt-1 p-2 w-full border rounded-md focus:outline-none focus:ring focus:border-blue-300 text-black"
                         />
                       </div>
                       <div className="mb-4">
@@ -507,7 +391,7 @@ const FormPage: React.FC = () => {
                         <textarea
                           id="ABI"
                           required
-                          className="mt-1 p-2 w-full border rounded-md focus:outline-none focus:ring focus:border-blue-300"
+                          className="mt-1 p-2 w-full border rounded-md focus:outline-none focus:ring focus:border-blue-300 text-black"
                           rows="4"
                           defaultValue='[{"constant":true,"inputs":[],"name":"name","outputs":[{"name":"","type":"string"}],"payable":false,"stateMutability":"view","type":"function"},{"constant":false,"inputs":[{"name":"_spender","type":"address"},{"name":"_amount","type":"uint256"}],"name":"approve","outputs":[{"name":"_success","type":"bool"}],"payable":false,"stateMutability":"nonpayable","type":"function"},{"constant":true,"inputs":[],"name":"totalSupply","outputs":[{"name":"_totalSupply","type":"uint256"}],"payable":false,"stateMutability":"view","type":"function"},{"constant":false,"inputs":[{"name":"_from","type":"address"},{"name":"_to","type":"address"},{"name":"_amount","type":"uint256"}],"name":"transferFrom","outputs":[{"name":"_success","type":"bool"}],"payable":false,"stateMutability":"nonpayable","type":"function"},{"constant":true,"inputs":[],"name":"decimals","outputs":[{"name":"","type":"uint8"}],"payable":false,"stateMutability":"view","type":"function"},{"constant":true,"inputs":[{"name":"_address","type":"address"}],"name":"isAllowedToMint","outputs":[{"name":"_allowed","type":"bool"}],"payable":false,"stateMutability":"view","type":"function"},{"constant":true,"inputs":[{"name":"_owner","type":"address"}],"name":"balanceOf","outputs":[{"name":"_balance","type":"uint256"}],"payable":false,"stateMutability":"view","type":"function"},{"constant":false,"inputs":[{"name":"_reason","type":"string"}],"name":"changeFreezeTransaction","outputs":[],"payable":false,"stateMutability":"nonpayable","type":"function"},{"constant":true,"inputs":[],"name":"owner","outputs":[{"name":"","type":"address"}],"payable":false,"stateMutability":"view","type":"function"},{"constant":true,"inputs":[],"name":"symbol","outputs":[{"name":"","type":"string"}],"payable":false,"stateMutability":"view","type":"function"},{"constant":false,"inputs":[{"name":"_addressToMint","type":"address"}],"name":"changeAllowanceToMint","outputs":[],"payable":false,"stateMutability":"nonpayable","type":"function"},{"constant":false,"inputs":[{"name":"_to","type":"address"},{"name":"_amount","type":"uint256"}],"name":"transfer","outputs":[{"name":"_success","type":"bool"}],"payable":false,"stateMutability":"nonpayable","type":"function"},{"constant":true,"inputs":[],"name":"tokenFrozen","outputs":[{"name":"","type":"bool"}],"payable":false,"stateMutability":"view","type":"function"},{"constant":true,"inputs":[{"name":"_owner","type":"address"},{"name":"_spender","type":"address"}],"name":"allowance","outputs":[{"name":"_remaining","type":"uint256"}],"payable":false,"stateMutability":"view","type":"function"},{"constant":false,"inputs":[{"name":"_atAddress","type":"address"},{"name":"_amount","type":"uint256"}],"name":"mintTokens","outputs":[],"payable":false,"stateMutability":"nonpayable","type":"function"},{"constant":false,"inputs":[{"name":"newOwner","type":"address"}],"name":"transferOwnership","outputs":[],"payable":false,"stateMutability":"nonpayable","type":"function"},{"inputs":[],"payable":false,"stateMutability":"nonpayable","type":"constructor"},{"payable":false,"stateMutability":"nonpayable","type":"fallback"},{"anonymous":false,"inputs":[{"indexed":false,"name":"_frozen","type":"bool"},{"indexed":false,"name":"_reason","type":"string"}],"name":"TokenFrozen","type":"event"},{"anonymous":false,"inputs":[{"indexed":true,"name":"_to","type":"address"},{"indexed":false,"name":"_value","type":"uint256"}],"name":"Mint","type":"event"},{"anonymous":false,"inputs":[{"indexed":true,"name":"_from","type":"address"},{"indexed":true,"name":"_to","type":"address"},{"indexed":false,"name":"_amount","type":"uint256"}],"name":"Transfer","type":"event"},{"anonymous":false,"inputs":[{"indexed":true,"name":"_owner","type":"address"},{"indexed":true,"name":"_spender","type":"address"},{"indexed":false,"name":"_amount","type":"uint256"}],"name":"Approval","type":"event"}]'
                         />
@@ -519,11 +403,37 @@ const FormPage: React.FC = () => {
                     <div>
                       <button
                         type="submit"
-                        disabled={!enableSave}
+                        disabled={!enableSave || submitIsLoading}
                         className="group relative w-full flex justify-center py-2 px-4 border border-transparent text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
                       >
-                        Continue
+                        {submitIsLoading ? (
+                          <>
+                            <div className="animate-spin h-5 w-5 mr-3 border-t-2 border-white">
+                              Wait
+                            </div>{" "}
+                            <div>This might take a second or </div>
+                            <div className="animate-spin h-5 w-5 mr-3 border-t-2 border-white">
+                              two
+                            </div>
+                          </>
+                        ) : (
+                          "Continue"
+                        )}
                       </button>
+
+                      {txHash && (
+                        <div className="flex justify-center mt-4">
+                          <p className="text-orange-400 italic">
+                            <a
+                              href={`${process.env.NEXT_PUBLIC_TESTNET_EXPLORER_URL}/tx/${txHash}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                            >
+                              View Transaction In Explorer
+                            </a>
+                          </p>
+                        </div>
+                      )}
                     </div>
                   </form>
                 </div>
@@ -618,15 +528,10 @@ const FormPage: React.FC = () => {
                     </h1>
                     {Object.entries(selectedFunctions).map(
                       ([funcName, funcDetails], index) => (
-                        <EditFunction
+                        <EditFunctionPreview
                           key={index}
                           thisFunction={funcDetails}
-                          code={ReactDOMServer.renderToString(
-                            <EditFunction
-                              key={index}
-                              thisFunction={funcDetails}
-                            />
-                          )}
+                          funcName={funcName}
                         />
                       )
                     )}

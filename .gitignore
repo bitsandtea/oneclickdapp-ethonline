@@ -6,3 +6,4 @@ backups/
 .tablelandrc.json
 notes.txt
 .env
+public/code

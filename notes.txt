@@ -83,3 +83,58 @@ tableland Pilot
 
 oneclick latest:
 0x288b2e5c2acd03f846111577d14a820869d0269a
+
+write a react component in next js, in typescript named RenderWidget.ts that does the following:
+
+it can be accessed by giving a variable inside the url so ?widget
+
+
+this function:
+{
+    "constant": false,
+    "inputs": [
+        {
+            "name": "_to",
+            "type": "address"
+        },
+        {
+            "name": "_amount",
+            "type": "uint256"
+        }
+    ],
+    "name": "transfer",
+    "outputs": [
+        {
+            "name": "_success",
+            "type": "bool"
+        }
+    ],
+    "payable": false,
+    "stateMutability": "nonpayable",
+    "type": "function"
+}
+
+
+module.exports = {
+  output: {
+    libraryTarget: "var", // This will expose your component as a global object when imported in the browser
+  },
+  module: {
+    rules: [
+      {
+        test: /\.(js|jsx)$/, // Regex to select all JS and JSX files
+        exclude: /node_modules/,
+        // use: {
+        //   loader: "babel-loader",
+        // },
+      },
+    ],
+  },
+  resolve: {
+    extensions: [".js", ".jsx"],
+  },
+  externals: {
+    react: "react", // This will avoid bundling React in your component if the consumer already has React
+    "react-dom": "reactDOM",
+  },
+};

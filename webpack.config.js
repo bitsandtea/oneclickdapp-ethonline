@@ -5,19 +5,37 @@ module.exports = {
   module: {
     rules: [
       {
-        test: /\.(js|jsx)$/, // Regex to select all JS and JSX files
+        test: /\.(js|jsx|ts|tsx)$/, // Updated this line to include ts and tsx
         exclude: /node_modules/,
-        // use: {
-        //   loader: "babel-loader",
-        // },
+        exclude: /smartcontracts/,
+        use: {
+          loader: "babel-loader",
+          // loader: "ts-loader",
+          options: {
+            presets: [
+              "@babel/preset-typescript", // Added this line for TypeScript
+              "@babel/preset-react", // For React
+            ],
+          },
+        },
+      },
+      // {
+      //   test: /\.(ts|tsx)$/,
+      //   use: "ts-loader",
+      //   exclude: /node_modules/,
+      //   exclude: /smartcontracts/,
+      // },
+      {
+        test: /\.css$/i,
+        use: ["style-loader", "css-loader", "postcss-loader"],
       },
     ],
   },
   resolve: {
-    extensions: [".js", ".jsx"],
+    extensions: [".js", ".jsx", ".tsx", ".ts"], // Added .tsx and .ts extensions
   },
   externals: {
-    react: "react", // This will avoid bundling React in your component if the consumer already has React
-    "react-dom": "reactDOM",
+    react: "React", // This will avoid bundling React in your component if the consumer already has React
+    "react-dom": "ReactDOM",
   },
 };

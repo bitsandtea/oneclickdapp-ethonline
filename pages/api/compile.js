@@ -1,11 +1,23 @@
 import { exec } from "child_process";
 import fs from "fs";
+import uploadFile from "@/utils/web3storage";
+import { getFilesFromPath } from "web3.storage";
 
-const CODE_DIR = "pages/api/temp/";
+import { Web3Storage } from "web3.storage";
+
+const client = new Web3Storage({
+  token: process.env.NEXT_PUBLIC_WEB3_STORAGE_KEY,
+});
+
+const CODE_DIR = "temp/";
 const PUBLIC_CODE_PATH = "./public/code";
 
 const buildWebpackCommand = ({ entryPath, outputFilename, outputPath }) =>
   `npx webpack --entry ${entryPath} --output-path ${outputPath} --config webpack.config.js --output-filename ${outputFilename} --mode production --output-library Widget`;
+
+function makeStorageClient() {
+  return new Web3Storage({ token: process.env.NEXT_PUBLIC_WEB3_STORAGE_KEY });
+}
 
 const generateRandomFilename = (length) => {
   const chars =
@@ -17,6 +29,12 @@ const generateRandomFilename = (length) => {
   }
   return result;
 };
+
+async function getFiles(path) {
+  const files = await getFilesFromPath(path);
+  console.log(`read ${files.length} file(s) from ${path}`);
+  return files;
+}
 
 const compileCode = (webpackCommand) =>
   new Promise((resolve, reject) => {
@@ -47,43 +65,64 @@ const deleteFile = (path) =>
     });
   });
 
+async function storeFiles(files) {
+  const client = makeStorageClient();
+  const cid = await client.put(files);
+  console.log("stored files with cid:", cid);
+  return cid;
+}
+
 export default async function handler(req, res) {
   if (req.method !== "POST") {
     return res.status(405).end(); // Method Not Allowed
   }
 
   const { code } = req.body;
+  const { functionData } = req.body;
 
   // TODO: Validate and sanitize code before proceeding.
 
-  //   const filename = "toCompileComponent.jsx";
-  const filename = `${generateRandomFilename(40)}.js`;
-  const entryPath = CODE_DIR + filename;
+  const filename = `${generateRandomFilename(40)}`;
 
-  const [username, projectName, widgetName] = [
-    "user123",
-    "project123",
-    "widget123",
-  ]; //TODO: Retrieve dynamically
+  const entryPath = `${CODE_DIR + filename}_entry.tsx`;
+  const entryFileContents = `
+  import React from "react";
+  import ReactDOM from "react-dom";
+  import EditFunction from "../components/EditFunction";
+  import "../styles/globals.css";
+  const fData = ${JSON.stringify(functionData)}
 
-  await fs.promises.writeFile(entryPath, code, "utf-8");
 
-  const outputFilename = `${username}_${projectName}_${widgetName}_bundled.js`;
+  ReactDOM.render(
+    <EditFunction thisFunction={fData} />,
+    document.getElementById("root")
+  );
+
+  export default EditFunction;`;
+  await fs.promises.writeFile(entryPath, entryFileContents, "utf-8");
+
+  const outputFilename = `${generateRandomFilename(40)}_bundled.js`;
 
   const webpackCommand = buildWebpackCommand({
     entryPath: `/${entryPath}`,
     outputFilename,
     outputPath: PUBLIC_CODE_PATH,
   });
-
   try {
     await compileCode(webpackCommand);
+    console.log(
+      "compiled and stored at: ",
+      `${PUBLIC_CODE_PATH}/${outputFilename}`
+    );
 
-    const outputURL = `http://localhost:3000/code/${outputFilename}`; //TODO: Make base URL dynamic
+    const files = await getFiles(`${PUBLIC_CODE_PATH}/${outputFilename}`);
+    const stored = await storeFiles(files);
 
     await deleteFile(entryPath);
 
-    res.status(200).json({ url: outputURL });
+    const fullLink = `https://${stored}.ipfs.dweb.link/${outputFilename}`;
+
+    https: res.status(200).json({ url: fullLink });
   } catch (error) {
     console.error(error);
     res.status(500).json({ error });

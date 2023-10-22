@@ -1,6 +1,6 @@
 import { GoogleProvider, LitAuthClient } from "@lit-protocol/lit-auth-client";
 import { ProviderType } from "@lit-protocol/constants";
-// import { LitNodeClient } from "@lit-protocol/lit-node-client";
+import * as LitJsSdk from "@lit-protocol/lit-node-client";
 
 //create exportable function
 const initLit = async () => {
@@ -39,6 +39,54 @@ export const getLitClient = async () => {
   await litNodeClient.connect();
 
   return litNodeClient;
+};
+export const encrypt = async (message: string, userSigs: any) => {
+  const litClient = await getLitClient();
+
+  const chain = "mumbai";
+
+  const accessControlConditions = [
+    {
+      contractAddress: "",
+      standardContractType: "",
+      chain,
+      method: "eth_getBalance",
+      parameters: [":userAddress", "latest"],
+      returnValueTest: {
+        comparator: ">=",
+        value: "1000000000000", // 0.000001 ETH
+      },
+    },
+  ];
+
+  const encryptable = {
+    accessControlConditions,
+    sessionSigs: userSigs,
+    chain: "mumbai",
+    dataToEncrypt: message,
+  };
+  const { ciphertext, dataToEncryptHash } = await LitJsSdk.encryptString(
+    encryptable,
+    litClient
+  );
+  return {
+    ciphertext,
+    dataToEncryptHash,
+  };
+};
+
+export const decrypt = async (ciphertext: string, userSigs: any) => {
+  // const decryptedString = await LitJsSdk.decryptToString(
+  //   {
+  //     accessControlConditions,
+  //     ciphertext,
+  //     dataToEncryptHash,
+  //     authSig,
+  //     chain,
+  //   },
+  //   client
+  // );
+  // console.log("decryptedString", decryptedString);
 };
 
 export default initLit;

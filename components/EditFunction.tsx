@@ -4,14 +4,13 @@ import React, { useState } from "react";
 import EthereumAddress from "./inputs/EthereumAddress";
 import AmountInput from "./inputs/Amount";
 import SubmitButton from "./inputs/SubmitButton";
-import GetWidgetButton from "./inputs/GetWidgetButton";
 
-interface EditFunctionProps {
+export interface EditFunctionProps {
   thisFunction: Function;
   code?: string;
 }
 
-const EditFunction: React.FC<EditFunctionProps> = ({ thisFunction, code }) => {
+const EditFunction: React.FC<EditFunctionProps> = ({ thisFunction }) => {
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-100 px-4 sm:p-6 lg:p-8">
       <div className="max-w-xl w-full space-y-8 bg-white p-6 rounded-md shadow-md">
@@ -40,11 +39,9 @@ const EditFunction: React.FC<EditFunctionProps> = ({ thisFunction, code }) => {
               })()
             )}
           <SubmitButton name={thisFunction.name} />
-          <GetWidgetButton code={code} />
         </div>
       </div>
     </div>
   );
 };
-
 export default EditFunction;
