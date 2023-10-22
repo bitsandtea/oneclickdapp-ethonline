@@ -102,7 +102,9 @@ const EditFunctionPreview: React.FC<EditFunctionPreviewProps> = ({
                 }
               })()
             )}
-          <div>JS To Import URL: {widgetURLs[funcName]}</div>
+          <div>
+            <p>JS To Import URL: {widgetURLs[funcName]}</p>
+          </div>
           <SubmitButton name={thisFunction.name} />
           {/* <button
             type="button"
